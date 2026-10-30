@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+    <package>A</package>
+    <repository>examples/repos/missing.txt</repository>
+    <test-mode>true</test-mode>
+</config>

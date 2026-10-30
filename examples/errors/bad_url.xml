@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+    <package>curl</package>
+    <repository>ftp://dl-cdn.alpinelinux.org/alpine</repository>
+</config>

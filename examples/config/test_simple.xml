@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Режим тестового репозитория: путь к файлу вместо URL -->
+<config>
+    <package>A</package>
+    <repository>examples/repos/simple.txt</repository>
+    <test-mode>true</test-mode>
+    <ascii-tree>true</ascii-tree>
+</config>
