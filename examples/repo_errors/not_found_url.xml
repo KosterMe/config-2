@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Репозиторий не существует (HTTP 404) -->
+<config>
+    <package>curl</package>
+    <repository>https://dl-cdn.alpinelinux.org/alpine/v9.99/main/x86_64</repository>
+    <test-mode>false</test-mode>
+    <ascii-tree>false</ascii-tree>
+</config>

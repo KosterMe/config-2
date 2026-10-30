@@ -1,9 +1,11 @@
 package depviz;
 
+import depviz.apk.ApkIndex;
+import depviz.apk.PackageInfo;
+import depviz.apk.RepositoryException;
 import depviz.config.Config;
 import depviz.config.ConfigException;
 import depviz.config.ConfigLoader;
-import java.util.Map;
 
 /**
  * Точка входа инструмента визуализации графа зависимостей.
@@ -20,7 +22,8 @@ public final class Main {
     }
 
     /**
-     * Загружает конфигурацию и выводит все параметры в формате ключ-значение.
+     * Загружает конфигурацию, скачивает индекс репозитория и выводит прямые
+     * зависимости заданного пакета.
      *
      * @param args путь к конфигурационному файлу (по умолчанию {@code config.xml})
      */
@@ -31,8 +34,17 @@ public final class Main {
             System.exit(EXIT_USAGE);
         }
         Config config = loadConfig(args.length == 0 ? DEFAULT_CONFIG : args[0]);
-        for (Map.Entry<String, String> entry : config.toKeyValues().entrySet()) {
-            System.out.println(entry.getKey() + " = " + entry.getValue());
+        if (config.testMode()) {
+            fail("test repository mode is not implemented yet");
+        }
+        try {
+            ApkIndex index = ApkIndex.fetch(config.repository());
+            PackageInfo info = index.find(config.packageName())
+                    .orElseThrow(() -> new RepositoryException("package '"
+                            + config.packageName() + "' not found in repository"));
+            DirectDependenciesPrinter.print(System.out, info, index.directDependencies(info));
+        } catch (RepositoryException e) {
+            fail(e.getMessage());
         }
     }
 
@@ -40,9 +52,13 @@ public final class Main {
         try {
             return ConfigLoader.load(path);
         } catch (ConfigException e) {
-            System.err.println("depviz: " + e.getMessage());
-            System.exit(EXIT_ERROR);
+            fail(e.getMessage());
             return null;
         }
+    }
+
+    private static void fail(String message) {
+        System.err.println("depviz: " + message);
+        System.exit(EXIT_ERROR);
     }
 }
