@@ -1,11 +1,15 @@
 package depviz;
 
 import depviz.apk.ApkIndex;
-import depviz.apk.PackageInfo;
-import depviz.apk.RepositoryException;
 import depviz.config.Config;
 import depviz.config.ConfigException;
 import depviz.config.ConfigLoader;
+import depviz.graph.DependencyGraph;
+import depviz.graph.GraphBuilder;
+import depviz.graph.GraphPrinter;
+import depviz.repo.PackageSource;
+import depviz.repo.RepositoryException;
+import depviz.repo.TestRepository;
 
 /**
  * Точка входа инструмента визуализации графа зависимостей.
@@ -22,8 +26,8 @@ public final class Main {
     }
 
     /**
-     * Загружает конфигурацию, скачивает индекс репозитория и выводит прямые
-     * зависимости заданного пакета.
+     * Загружает конфигурацию, строит граф зависимостей заданного пакета
+     * (с учётом транзитивных зависимостей) и выводит его.
      *
      * @param args путь к конфигурационному файлу (по умолчанию {@code config.xml})
      */
@@ -34,18 +38,24 @@ public final class Main {
             System.exit(EXIT_USAGE);
         }
         Config config = loadConfig(args.length == 0 ? DEFAULT_CONFIG : args[0]);
-        if (config.testMode()) {
-            fail("test repository mode is not implemented yet");
-        }
         try {
-            ApkIndex index = ApkIndex.fetch(config.repository());
-            PackageInfo info = index.find(config.packageName())
-                    .orElseThrow(() -> new RepositoryException("package '"
-                            + config.packageName() + "' not found in repository"));
-            DirectDependenciesPrinter.print(System.out, info, index.directDependencies(info));
+            PackageSource source = openSource(config);
+            if (!source.contains(config.packageName())) {
+                throw new RepositoryException("package '" + config.packageName()
+                        + "' not found in repository");
+            }
+            DependencyGraph graph = GraphBuilder.build(source, config.packageName());
+            GraphPrinter.print(System.out, graph);
         } catch (RepositoryException e) {
             fail(e.getMessage());
         }
+    }
+
+    private static PackageSource openSource(Config config) throws RepositoryException {
+        if (config.testMode()) {
+            return TestRepository.load(config.repository());
+        }
+        return ApkIndex.fetch(config.repository());
     }
 
     private static Config loadConfig(String path) {

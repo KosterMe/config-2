@@ -1,11 +1,15 @@
 package depviz.apk;
 
+import depviz.repo.PackageSource;
+import depviz.repo.RepositoryException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Индекс пакетов репозитория Alpine Linux с поиском пакетов и разрешением
@@ -19,7 +23,7 @@ import java.util.Optional;
  * {@code k:}, при равенстве — первый в индексе. Записи вида {@code !pkg}
  * означают конфликт, а не зависимость, и пропускаются.
  */
-public final class ApkIndex {
+public final class ApkIndex implements PackageSource {
 
     private static final String CONFLICT = "!";
 
@@ -69,6 +73,28 @@ public final class ApkIndex {
      */
     public Optional<PackageInfo> find(String name) {
         return Optional.ofNullable(packages.get(name));
+    }
+
+    @Override
+    public boolean contains(String name) {
+        return packages.containsKey(name);
+    }
+
+    /**
+     * Возвращает пакеты, в которые разрешаются прямые зависимости пакета.
+     *
+     * <p>Если несколько записей разрешаются в один пакет, он возвращается
+     * один раз. Неразрешённая зависимость возвращается под своим именем.
+     *
+     * @param name имя пакета из индекса
+     * @return имена пакетов-зависимостей в порядке из индекса
+     */
+    @Override
+    public List<String> dependencies(String name) {
+        Set<String> result = new LinkedHashSet<>();
+        find(name).ifPresent(info -> directDependencies(info)
+                .forEach(dependency -> result.add(dependency.target())));
+        return List.copyOf(result);
     }
 
     /**

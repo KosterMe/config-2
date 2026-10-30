@@ -10,8 +10,12 @@
 
 Приложение читает настройки из конфигурационного файла формата XML,
 скачивает индекс пакетов репозитория Alpine Linux (`APKINDEX.tar.gz`),
-самостоятельно распаковывает и разбирает его и выводит прямые зависимости
-заданного пакета.
+самостоятельно распаковывает и разбирает его и строит граф зависимостей
+заданного пакета с учётом транзитивных зависимостей. Граф строится
+рекурсивным обходом в глубину (DFS), циклические зависимости
+обнаруживаются и выводятся. Вместо реального репозитория можно указать
+файл тестового репозитория, где пакеты называются большими латинскими
+буквами.
 
 ## Этапы
 
@@ -19,16 +23,19 @@
 |---|---|---|
 | 1. Прототип с конфигурацией | чтение и проверка XML-конфига, вывод параметров | `stage-1` |
 | 2. Сбор данных | загрузка и разбор `APKINDEX`, вывод прямых зависимостей | `stage-2` |
+| 3. Основные операции | граф зависимостей (DFS с рекурсией), циклы, тестовый репозиторий | `stage-3` |
 
 Каждый этап — отдельный коммит, отмеченный тегом. Состояние проекта на нужном
 этапе: `git checkout stage-1` (вернуться обратно: `git checkout main`).
 Вывод всех параметров в формате ключ-значение требовался только на этапе 1,
-начиная с этапа 2 приложение выводит прямые зависимости пакета.
+а вывод одних прямых зависимостей — только на этапе 2. Начиная с этапа 3
+приложение выводит граф зависимостей целиком.
 
 ## Требования
 
 - JDK 17 или новее (`javac` и `java` должны быть доступны в `PATH`).
-- Доступ в интернет для загрузки индекса репозитория.
+- Доступ в интернет для загрузки индекса реального репозитория (для
+  тестового репозитория и тестов сеть не нужна).
 - Сторонние библиотеки не используются: XML разбирается стандартным
   `javax.xml.parsers`, загрузка идёт через `java.net.http`, gzip
   распаковывается `java.util.zip`, а формат tar и `APKINDEX` разбираются
@@ -42,8 +49,10 @@
 | Сборка и запуск тестов | `./test.sh` | `test.bat` |
 | Запуск с разными конфигурациями | `./scripts/stage1_config.sh` | `scripts\stage1_config.bat` |
 | Демонстрация обработки ошибок | `./scripts/stage1_errors.sh` | `scripts\stage1_errors.bat` |
-| Прямые зависимости пяти пакетов | `./scripts/stage2_direct.sh` | `scripts\stage2_direct.bat` |
+| Реальный репозиторий: пять пакетов | `./scripts/stage2_direct.sh` | `scripts\stage2_direct.bat` |
 | Ошибки получения данных | `./scripts/stage2_errors.sh` | `scripts\stage2_errors.bat` |
+| Тестовые репозитории: все случаи | `./scripts/stage3_test_repo.sh` | `scripts\stage3_test_repo.bat` |
+| Ошибки в тестовых репозиториях | `./scripts/stage3_test_errors.sh` | `scripts\stage3_test_errors.bat` |
 
 Скрипты сами компилируют исходники, классы складываются в папку `out/`
 (она в `.gitignore`). Тесты написаны без внешних библиотек и запускаются
@@ -81,9 +90,7 @@
 
 - `test-mode = false` — URL со схемой `http` или `https` и указанным хостом;
 - `test-mode = true` — путь к существующему файлу тестового репозитория
-  (относительно текущего каталога). Режим тестового репозитория
-  реализуется на этапе 3, пока приложение сообщает
-  `test repository mode is not implemented yet`.
+  (относительно текущего каталога), формат файла описан ниже.
 
 URL репозитория — это каталог с индексом, например
 `https://dl-cdn.alpinelinux.org/alpine/v3.20/main/x86_64`; к нему
@@ -130,11 +137,83 @@ URL репозитория — это каталог с индексом, нап
    виртуальные имена: библиотеки `so:libz.so.1`, команды `cmd:sh` и файлы
    `/bin/sh`. Если поставщиков несколько, берётся пакет с наибольшим
    приоритетом `k`, при равенстве — первый в индексе.
-5. Если поставщика нет, зависимость выводится как не найденная.
+5. Если поставщика нет, зависимость попадает в граф как не найденная.
 
 Несколько записей, которые разрешаются в один пакет (например,
-`libcurl=8.14.1-r2` и `so:libcurl.so.4`), выводятся одной строкой: слева
-пакет, справа — исходные записи из индекса.
+`libcurl=8.14.1-r2` и `so:libcurl.so.4`), дают одно ребро графа.
+
+### Тестовый репозиторий
+
+Включается параметром `test-mode = true`, в `repository` указывается путь к
+файлу описания графа. Каждая строка описывает один пакет и его прямые
+зависимости:
+
+```
+# комментарий
+A: B C
+B: D
+C: D, E
+D:
+E: A
+```
+
+- Имена пакетов — большие латинские буквы (`A`, `B`, `AB`, ...).
+- Зависимости разделяются пробелами и/или запятыми, после `:` список
+  может быть пустым.
+- Пустые строки и строки, начинающиеся с `#`, пропускаются.
+- Каждый пакет описывается один раз, зависимость в строке не повторяется.
+- Пакет, который упомянут только как зависимость, считается отсутствующим
+  в репозитории и отмечается в графе как не найденный.
+
+Готовые тестовые репозитории лежат в `examples/repos/`, конфигурации для
+них — `examples/config/test_*.xml`:
+
+| Файл | Случай |
+|---|---|
+| `simple.txt` | общая зависимость (ромб `A → B, C → D`) |
+| `chain.txt` | цепочка `A → B → C → D → E` |
+| `cycle.txt` | цикл `A → B → C → A` |
+| `self_loop.txt` | пакет зависит сам от себя |
+| `multi_cycle.txt` | два цикла, общие зависимости и недостижимый пакет `G` |
+| `missing_deps.txt` | зависимости, которых нет в репозитории |
+| `bad_*.txt` | файлы с ошибками формата |
+
+### Построение графа (DFS)
+
+Граф строится рекурсивным обходом в глубину от заданного пакета. Каждая
+вершина находится в одном из состояний: не посещена, «в работе» (лежит на
+текущем пути обхода) или обработана.
+
+1. При входе в вершину она помечается «в работе» и добавляется в путь.
+2. Для каждой зависимости: если она не посещена — рекурсивный вызов;
+   если она «в работе» — найдено обратное ребро, то есть цикл; если уже
+   обработана — она не обходится повторно.
+3. При выходе вершина удаляется из пути и помечается обработанной.
+
+Цикл — это участок текущего пути от вершины, в которую ведёт обратное
+ребро, до текущей вершины. Он записывается в граф, а обход по этому ребру
+не продолжается, поэтому циклические зависимости не приводят к
+бесконечной рекурсии. Каждая вершина обрабатывается один раз, поэтому
+время работы линейно от числа вершин и рёбер.
+
+### Вывод графа
+
+```
+Dependency graph of A (packages: 4, edges: 4):
+  A -> B
+  B -> C
+  C -> A, D
+  D (no dependencies)
+Cycles (1):
+  A -> B -> C -> A
+```
+
+- В заголовке — число пакетов (включая не найденные) и рёбер графа.
+- Пакеты перечислены в порядке обнаружения обходом в глубину, для каждого
+  указаны его прямые зависимости.
+- `(no dependencies)` — у пакета нет зависимостей, `(not found in
+  repository)` — пакет упомянут как зависимость, но его нет в репозитории.
+- В конце перечислены найденные циклы или `Cycles: none`.
 
 ### Обработка ошибок
 
@@ -164,7 +243,8 @@ URL репозитория — это каталог с индексом, нап
 
 Примеры файлов с каждой ошибкой лежат в `examples/errors/`.
 
-Ошибки получения данных (примеры в `examples/repo_errors/`):
+Ошибки получения данных из реального репозитория (примеры в
+`examples/repo_errors/`):
 
 | Ситуация | Сообщение | Код |
 |---|---|---|
@@ -177,14 +257,23 @@ URL репозитория — это каталог с индексом, нап
 | Запись без имени пакета | `APKINDEX record at line N has no package name (P:)` | 1 |
 | Нечисловой приоритет | `invalid priority '...' at APKINDEX line N` | 1 |
 | Пакета нет в репозитории | `package 'no-such-package' not found in repository` | 1 |
-| Включён тестовый режим | `test repository mode is not implemented yet` | 1 |
+
+Ошибки тестового репозитория (примеры в `examples/test_errors/`):
+
+| Ситуация | Сообщение | Код |
+|---|---|---|
+| Строка без `:` | `test repository line N: expected 'NAME: DEPENDENCIES', got '...'` | 1 |
+| Имя не из букв `A-Z` | `test repository line N: invalid package name 'b': ...` | 1 |
+| Пакет описан дважды | `test repository line N: package 'A' is already defined at line M` | 1 |
+| Зависимость повторяется | `test repository line N: dependency 'B' is listed twice` | 1 |
+| Файл не читается | `cannot read test repository '...': ...` | 1 |
+| Пакета нет в репозитории | `package 'Z' not found in repository` | 1 |
 
 ## Структура проекта
 
 ```
 src/depviz/                       исходный код
   Main.java                       точка входа
-  DirectDependenciesPrinter.java  вывод прямых зависимостей
   config/                         конфигурация
     Config.java                   параметры пользователя
     ConfigLoader.java             загрузка и проверка значений
@@ -197,11 +286,19 @@ src/depviz/                       исходный код
     ApkIndex.java                 поиск пакетов и разрешение зависимостей
     PackageInfo.java              описание пакета
     Dependency.java               прямая зависимость
+  repo/                           общие для источников пакетов классы
+    PackageSource.java            источник сведений о пакетах
+    TestRepository.java           тестовый репозиторий из файла
     RepositoryException.java      ошибка получения данных
+  graph/                          граф зависимостей
+    GraphBuilder.java             построение графа рекурсивным DFS
+    DependencyGraph.java          вершины, рёбра, циклы
+    GraphPrinter.java             текстовый вывод графа
 tests/depviz/                     тесты (запуск через TestRunner)
 examples/config/                  корректные конфигурации
 examples/errors/                  конфигурации с ошибками
-examples/repo_errors/             конфигурации с ошибками репозитория
+examples/repo_errors/             ошибки реального репозитория
+examples/test_errors/             ошибки тестового репозитория
 examples/repos/                   файлы тестовых репозиториев
 scripts/                          демонстрационные скрипты
 config.xml                        конфигурация по умолчанию
@@ -209,47 +306,136 @@ config.xml                        конфигурация по умолчани
 
 ## Примеры использования
 
-Версии пакетов зависят от текущего состояния репозитория и со временем
-могут отличаться от приведённых ниже.
+### Реальный репозиторий
+
+Версии и состав пакетов зависят от текущего состояния репозитория и со
+временем могут отличаться от приведённых ниже.
 
 ```
 $ ./run.sh
-Package: curl 8.14.1-r2
-Direct dependencies (3):
-  libcurl  <- libcurl=8.14.1-r2, so:libcurl.so.4
-  musl     <- so:libc.musl-x86_64.so.1
-  zlib     <- so:libz.so.1
+Dependency graph of curl (packages: 16, edges: 33):
+  curl -> libcurl, musl, zlib
+  libcurl -> ca-certificates, brotli-libs, musl, c-ares, libcrypto3, libidn2, nghttp2-libs, libpsl, libssl3, zlib, zstd-libs
+  ca-certificates -> busybox-binsh, musl, libcrypto3
+  busybox-binsh -> busybox
+  busybox -> musl
+  musl (no dependencies)
+  libcrypto3 -> musl
+  brotli-libs -> musl
+  c-ares -> musl
+  libidn2 -> musl, libunistring
+  libunistring -> musl
+  nghttp2-libs -> musl
+  libpsl -> musl, libidn2, libunistring
+  libssl3 -> libcrypto3, musl
+  zlib -> musl
+  zstd-libs -> musl
+Cycles: none
 
 $ ./run.sh examples/config/nginx.xml
-Package: nginx 1.26.3-r0
-Direct dependencies (6):
-  busybox-binsh  <- /bin/sh
-  musl           <- so:libc.musl-x86_64.so.1
-  libcrypto3     <- so:libcrypto.so.3
-  pcre           <- so:libpcre.so.1
-  libssl3        <- so:libssl.so.3
-  zlib           <- so:libz.so.1
-
-$ ./run.sh examples/config/python3.xml
-Package: python3 3.12.13-r0
-Direct dependencies (14):
-  libssl3      <- libssl3>=3.3.0, so:libssl.so.3
-  libbz2       <- so:libbz2.so.1
-  musl         <- so:libc.musl-x86_64.so.1
-  libcrypto3   <- so:libcrypto.so.3
-  libexpat     <- so:libexpat.so.1
-  libffi       <- so:libffi.so.8
-  gdbm         <- so:libgdbm_compat.so.4
-  xz-libs      <- so:liblzma.so.5
-  mpdecimal    <- so:libmpdec.so.4
-  libncursesw  <- so:libncursesw.so.6
-  libpanelw    <- so:libpanelw.so.6
-  readline     <- so:libreadline.so.8
-  sqlite-libs  <- so:libsqlite3.so.0
-  zlib         <- so:libz.so.1
+Dependency graph of nginx (packages: 8, edges: 13):
+  nginx -> busybox-binsh, musl, libcrypto3, pcre, libssl3, zlib
+  busybox-binsh -> busybox
+  busybox -> musl
+  musl (no dependencies)
+  libcrypto3 -> musl
+  pcre -> musl
+  libssl3 -> libcrypto3, musl
+  zlib -> musl
+Cycles: none
 ```
 
-Ошибки получения данных (вывод `./scripts/stage2_errors.sh`):
+### Тестовый репозиторий
+
+Несколько циклов (`examples/repos/multi_cycle.txt`):
+
+```
+$ cat examples/repos/multi_cycle.txt
+# Несколько циклов и общие зависимости
+A: B C
+B: D
+C: D E
+D: B F
+E: A
+F:
+G: A
+
+$ ./run.sh examples/config/test_multi_cycle.xml
+Dependency graph of A (packages: 6, edges: 8):
+  A -> B, C
+  B -> D
+  D -> B, F
+  F (no dependencies)
+  C -> D, E
+  E -> A
+Cycles (2):
+  B -> D -> B
+  A -> C -> E -> A
+```
+
+Пакет `G` зависит от `A`, но из `A` недостижим, поэтому в граф не попадает.
+Тот же репозиторий для пакета `D`:
+
+```
+$ ./run.sh examples/config/test_subgraph.xml
+Dependency graph of D (packages: 3, edges: 3):
+  D -> B, F
+  B -> D
+  F (no dependencies)
+Cycles (1):
+  D -> B -> D
+```
+
+Пакет зависит сам от себя (`A: A B`):
+
+```
+$ ./run.sh examples/config/test_self_loop.xml
+Dependency graph of A (packages: 2, edges: 2):
+  A -> A, B
+  B (no dependencies)
+Cycles (1):
+  A -> A
+```
+
+Отсутствующие пакеты (`A: B X`, `B: C Y`, `C:`):
+
+```
+$ ./run.sh examples/config/test_missing.xml
+Dependency graph of A (packages: 5, edges: 4):
+  A -> B, X
+  B -> C, Y
+  C (no dependencies)
+  Y (not found in repository)
+  X (not found in repository)
+Cycles: none
+```
+
+### Ошибки
+
+Ошибки тестового репозитория (вывод `./scripts/stage3_test_errors.sh`):
+
+```
+=== examples/test_errors/bad_dependency.xml ===
+depviz: test repository line 1: invalid package name 'C1': use capital Latin letters A-Z
+exit code: 1
+=== examples/test_errors/duplicate.xml ===
+depviz: test repository line 3: package 'A' is already defined at line 1
+exit code: 1
+=== examples/test_errors/lowercase.xml ===
+depviz: test repository line 2: invalid package name 'b': use capital Latin letters A-Z
+exit code: 1
+=== examples/test_errors/no_colon.xml ===
+depviz: test repository line 2: expected 'NAME: DEPENDENCIES', got 'B C'
+exit code: 1
+=== examples/test_errors/repeated_dependency.xml ===
+depviz: test repository line 1: dependency 'B' is listed twice
+exit code: 1
+=== examples/test_errors/unknown_package.xml ===
+depviz: package 'Z' not found in repository
+exit code: 1
+```
+
+Ошибки реального репозитория (вывод `./scripts/stage2_errors.sh`):
 
 ```
 === examples/repo_errors/not_found_url.xml ===

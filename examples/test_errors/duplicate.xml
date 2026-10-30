@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Пакет описан дважды -->
+<config>
+    <package>A</package>
+    <repository>examples/repos/bad_duplicate.txt</repository>
+    <test-mode>true</test-mode>
+    <ascii-tree>false</ascii-tree>
+</config>

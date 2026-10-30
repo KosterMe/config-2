@@ -1,4 +1,4 @@
-package depviz.apk;
+package depviz.repo;
 
 /**
  * Ошибка получения или разбора данных репозитория.

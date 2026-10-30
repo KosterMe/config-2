@@ -1,6 +1,7 @@
 package depviz.apk;
 
 import depviz.Check;
+import depviz.repo.RepositoryException;
 import java.nio.charset.StandardCharsets;
 
 /**

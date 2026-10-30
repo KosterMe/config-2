@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Простой цикл -->
+<config>
+    <package>A</package>
+    <repository>examples/repos/cycle.txt</repository>
+    <test-mode>true</test-mode>
+    <ascii-tree>false</ascii-tree>
+</config>

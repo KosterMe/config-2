@@ -1,5 +1,6 @@
 package depviz.apk;
 
+import depviz.repo.RepositoryException;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.URI;

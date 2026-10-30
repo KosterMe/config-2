@@ -27,6 +27,7 @@ public final class ApkIndexTest {
         find(index);
         resolve(index);
         dependencies(index);
+        packageSource(index);
     }
 
     private static void find(ApkIndex index) {
@@ -53,6 +54,18 @@ public final class ApkIndexTest {
                 new Dependency("so:libmissing.so.1", "so:libmissing.so.1", false)), deps);
         List<Dependency> none = index.directDependencies(index.find("musl").orElseThrow());
         Check.equal("apk: no deps", List.of(), none);
+    }
+
+    private static void packageSource(ApkIndex index) {
+        Check.equal("apk: contains", true, index.contains("libz"));
+        Check.equal("apk: contains only real names", false, index.contains("so:libz.so.1"));
+        Check.equal("apk: source deps", List.of("libz", "musl", "busybox-binsh",
+                "so:libmissing.so.1"), index.dependencies("app"));
+        ApkIndex twice = new ApkIndex(List.of(
+                pkg("curl", List.of("libcurl=8.14", "so:libcurl.so.4"), List.of(), 0),
+                pkg("libcurl", List.of(), List.of("so:libcurl.so.4"), 0)));
+        Check.equal("apk: source deps distinct", List.of("libcurl"), twice.dependencies("curl"));
+        Check.equal("apk: source unknown", List.of(), twice.dependencies("nginx"));
     }
 
     private static PackageInfo pkg(String name, List<String> deps, List<String> provides,

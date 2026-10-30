@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Граф для пакета не из корня файла -->
+<config>
+    <package>D</package>
+    <repository>examples/repos/multi_cycle.txt</repository>
+    <test-mode>true</test-mode>
+    <ascii-tree>false</ascii-tree>
+</config>
